@@ -28,6 +28,11 @@ void setGitProxy(const string& proxy)
     system(cmd1.c_str());
     system(cmd2.c_str());
 }
+void unsetGitProxy() {
+    system("git config --global --unset http.proxy");
+    system("git config --global --unset https.proxy");
+}
+
 void verifyGitProxy() {
     string result =runCommand("git config --global --get http.proxy");
 
@@ -44,14 +49,16 @@ int main()
     }
     else{
         cout<<"college proxy not detected\n";
+        unsetGitProxy();
+        verifyGitProxy();
         return 0;
     }
 
-    string username,password;
-    cout<<"Enter proxy username"<<endl;
-    cin>>username;
-    cout<<"enter proxy password"<<endl;
-    cin>>password;
+    string username="IIT2023189",password="Aniziiit%4027";
+    // cout<<"Enter proxy username"<<endl;
+    // cin>>username;
+    // cout<<"enter proxy password"<<endl;
+    // cin>>password;
 
     string proxy="http://"+username+":"+password+"@172.31.2.4:8080";
     cout<<proxy<<endl;
