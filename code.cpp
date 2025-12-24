@@ -5,24 +5,24 @@
 #include <windows.h>
 #include <wincred.h>
 #pragma comment(lib, "Advapi32.lib")
+#include<windows.h>
+#include <wininet.h>
+
 
 using namespace std;
 
-bool loadProxyCredentials(
-    std::string& username,
-    std::string& password
-) {
+bool loadProxyCredentials(string& username,string& password) {
     PCREDENTIALW cred = nullptr;
 
     if (!CredReadW(L"COLLEGE_PROXY", CRED_TYPE_GENERIC, 0, &cred)) {
         DWORD err = GetLastError();
-        std::cerr << "CredRead failed. Error code: " << err << "\n";
+        cerr << "CredRead failed. Error code: " << err << "\n";
         return false;
     }
 
-    // Username (WCHAR* → std::string)
+    // Username (WCHAR* → string)
     if (cred->UserName) {
-        std::wstring wsUser(cred->UserName);
+        wstring wsUser(cred->UserName);
         username.assign(wsUser.begin(), wsUser.end());
     }
 
@@ -31,7 +31,7 @@ bool loadProxyCredentials(
         WCHAR* widePass = reinterpret_cast<WCHAR*>(cred->CredentialBlob);
         size_t charCount = cred->CredentialBlobSize / sizeof(WCHAR);
 
-        std::wstring wsPass(widePass, charCount);
+        wstring wsPass(widePass, charCount);
         password.assign(wsPass.begin(), wsPass.end());
     }
 
@@ -68,6 +68,7 @@ void setGitProxy(const string& proxy)
     system(cmd1.c_str());
     system(cmd2.c_str());
 }
+
 void unsetGitProxy() {
     system("git config --global --unset http.proxy");
     system("git config --global --unset https.proxy");
@@ -84,10 +85,12 @@ void setNpmProxy(const string& proxy) {
     system(("npm config set proxy " + proxy).c_str());
     system(("npm config set https-proxy " + proxy).c_str());
 }
+
 void unsetNpmProxy() {
     system("npm config delete proxy");
     system("npm config delete https-proxy");
 }
+
 void verifyNpmProxy() {
    string result =
         runCommand("npm config get proxy");
@@ -95,6 +98,82 @@ void verifyNpmProxy() {
    cout << "NPM proxy currently set to:\n"
               << result << "\n";
 }
+
+void enableWinInetProxy() {
+    HKEY hKey;
+    const char* subKey ="Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings";
+
+    if (RegOpenKeyExA(
+            HKEY_CURRENT_USER,
+            subKey,
+            0,
+            KEY_SET_VALUE,
+            &hKey
+        ) != ERROR_SUCCESS) {
+        std::cerr << "Failed to open registry key\n";
+        return;
+    }
+
+    DWORD enable = 1;
+    RegSetValueExA(
+        hKey,
+        "ProxyEnable",
+        0,
+        REG_DWORD,
+        reinterpret_cast<const BYTE*>(&enable),
+        sizeof(enable)
+    );
+
+    const char* proxyServer = "172.31.2.4:8080";
+    RegSetValueExA(
+        hKey,
+        "ProxyServer",
+        0,
+        REG_SZ,
+        reinterpret_cast<const BYTE*>(proxyServer),
+        strlen(proxyServer) + 1
+    );
+
+    RegCloseKey(hKey);
+
+    // Notify system about the change
+    InternetSetOptionA(nullptr, INTERNET_OPTION_SETTINGS_CHANGED, nullptr, 0);
+    InternetSetOptionA(nullptr, INTERNET_OPTION_REFRESH, nullptr, 0);
+}
+
+void disableWinInetProxy() {
+    HKEY hKey;
+    const char* subKey =
+        "Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings";
+
+    if (RegOpenKeyExA(
+            HKEY_CURRENT_USER,
+            subKey,
+            0,
+            KEY_SET_VALUE,
+            &hKey
+        ) != ERROR_SUCCESS) {
+        std::cerr << "Failed to open registry key\n";
+        return;
+    }
+
+    DWORD disable = 0;
+    RegSetValueExA(
+        hKey,
+        "ProxyEnable",
+        0,
+        REG_DWORD,
+        reinterpret_cast<const BYTE*>(&disable),
+        sizeof(disable)
+    );
+
+    RegCloseKey(hKey);
+
+    InternetSetOptionA(nullptr, INTERNET_OPTION_SETTINGS_CHANGED, nullptr, 0);
+    InternetSetOptionA(nullptr, INTERNET_OPTION_REFRESH, nullptr, 0);
+}
+
+
 
 int main()
 {
@@ -110,6 +189,7 @@ int main()
 
        cout << "College network detected\n";
 
+        enableWinInetProxy();
         setGitProxy(proxy);
         setNpmProxy(proxy);
 
@@ -118,7 +198,7 @@ int main()
 
     } else {
        cout << "Not college network detected\n";
-
+        disableWinInetProxy();
         unsetGitProxy();
         unsetNpmProxy();
 
