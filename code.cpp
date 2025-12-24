@@ -166,7 +166,6 @@ void disableWinInetProxy() {
         reinterpret_cast<const BYTE*>(&disable),
         sizeof(disable)
     );
-
     RegCloseKey(hKey);
 
     InternetSetOptionA(nullptr, INTERNET_OPTION_SETTINGS_CHANGED, nullptr, 0);
