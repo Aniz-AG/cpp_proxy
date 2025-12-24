@@ -1,4 +1,10 @@
 /*We are building a cli tool to auto set proxy with minimal steps -- college proxy in wifi setting and also in npm and git*/
+// ===== Configuration =====
+constexpr const char* COLLEGE_GATEWAY = "172.19.4.1";
+constexpr const char* PROXY_SERVER = "172.31.2.4:8080";
+constexpr const wchar_t* CRED_NAME = L"COLLEGE_PROXY";
+
+
 #include<iostream>
 #include<string>
 #include<cstdio> //<-- gives C standard I/O like FILE, _popen, _pclose, fgets
@@ -14,7 +20,7 @@ using namespace std;
 bool loadProxyCredentials(string& username,string& password) {
     PCREDENTIALW cred = nullptr;
 
-    if (!CredReadW(L"COLLEGE_PROXY", CRED_TYPE_GENERIC, 0, &cred)) {
+    if (!CredReadW(CRED_NAME, CRED_TYPE_GENERIC, 0, &cred)) {
         DWORD err = GetLastError();
         cerr << "CredRead failed. Error code: " << err << "\n";
         return false;
@@ -57,7 +63,7 @@ string runCommand(const char* cmd){ //we use char* as _popen expects C string , 
 
 bool isCollegeNetwork() {
    string output = runCommand("ipconfig");
-    return output.find("172.19.4.1") !=string::npos;
+    return output.find(COLLEGE_GATEWAY) !=string::npos;
 }
 
 void setGitProxy(const string& proxy)
@@ -74,11 +80,26 @@ void unsetGitProxy() {
     system("git config --global --unset https.proxy");
 }
 
+string maskProxyPassword(const string& proxy) 
+{ 
+    // Find the '@' which separates credentials from host
+     size_t atPos = proxy.find('@');
+     size_t colonPos = proxy.find(':', proxy.find("://") + 3); 
+     if (colonPos != string::npos && atPos != string::npos && colonPos < atPos) 
+     { 
+        // Keep scheme + username, mask password 
+        string prefix = proxy.substr(0, colonPos + 1);  // includes ':' 
+        string suffix = proxy.substr(atPos); // includes '@' and host 
+        return prefix + "****" + suffix; // replace password with **** 
+    } return proxy; 
+// no password found 
+}
+
 void verifyGitProxy() {
     string result =runCommand("git config --global --get http.proxy");
 
     cout << "Git proxy currently set to:\n"
-              << result << "\n";
+              << maskProxyPassword(result) << "\n";
 }
 
 void setNpmProxy(const string& proxy) {
@@ -96,7 +117,7 @@ void verifyNpmProxy() {
         runCommand("npm config get proxy");
 
    cout << "NPM proxy currently set to:\n"
-              << result << "\n";
+              << maskProxyPassword(result) << "\n";
 }
 
 void enableWinInetProxy() {
@@ -124,7 +145,7 @@ void enableWinInetProxy() {
         sizeof(enable)
     );
 
-    const char* proxyServer = "172.31.2.4:8080";
+    const char* proxyServer = PROXY_SERVER;
     RegSetValueExA(
         hKey,
         "ProxyServer",
