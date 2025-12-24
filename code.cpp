@@ -2,8 +2,43 @@
 #include<iostream>
 #include<string>
 #include<cstdio> //<-- gives C standard I/O like FILE, _popen, _pclose, fgets
+#include <windows.h>
+#include <wincred.h>
+#pragma comment(lib, "Advapi32.lib")
 
 using namespace std;
+
+bool loadProxyCredentials(
+    std::string& username,
+    std::string& password
+) {
+    PCREDENTIALW cred = nullptr;
+
+    if (!CredReadW(L"COLLEGE_PROXY", CRED_TYPE_GENERIC, 0, &cred)) {
+        DWORD err = GetLastError();
+        std::cerr << "CredRead failed. Error code: " << err << "\n";
+        return false;
+    }
+
+    // Username (WCHAR* → std::string)
+    if (cred->UserName) {
+        std::wstring wsUser(cred->UserName);
+        username.assign(wsUser.begin(), wsUser.end());
+    }
+
+    // Password: treat blob as UTF-16 WCHAR[]
+    if (cred->CredentialBlob && cred->CredentialBlobSize > 0) {
+        WCHAR* widePass = reinterpret_cast<WCHAR*>(cred->CredentialBlob);
+        size_t charCount = cred->CredentialBlobSize / sizeof(WCHAR);
+
+        std::wstring wsPass(widePass, charCount);
+        password.assign(wsPass.begin(), wsPass.end());
+    }
+
+    CredFree(cred);
+    return true;
+}
+
 
 string runCommand(const char* cmd){ //we use char* as _popen expects C string , not cpp styles string
     char buffer[256];
@@ -18,6 +53,11 @@ string runCommand(const char* cmd){ //we use char* as _popen expects C string , 
 
     _pclose(pipe);
     return result;
+}
+
+bool isCollegeNetwork() {
+   string output = runCommand("ipconfig");
+    return output.find("172.19.4.1") !=string::npos;
 }
 
 void setGitProxy(const string& proxy)
@@ -40,32 +80,51 @@ void verifyGitProxy() {
               << result << "\n";
 }
 
+void setNpmProxy(const string& proxy) {
+    system(("npm config set proxy " + proxy).c_str());
+    system(("npm config set https-proxy " + proxy).c_str());
+}
+void unsetNpmProxy() {
+    system("npm config delete proxy");
+    system("npm config delete https-proxy");
+}
+void verifyNpmProxy() {
+   string result =
+        runCommand("npm config get proxy");
+
+   cout << "NPM proxy currently set to:\n"
+              << result << "\n";
+}
+
 int main()
 {
-    string output=runCommand("ipconfig");
+  if (isCollegeNetwork()) {
 
-    if(output.find("172.19.4.1")!=string::npos){
-        cout<<"college proxy detected\n";
+    string username, password;
+    if (!loadProxyCredentials(username, password)) {
+        cerr << "Failed to load proxy credentials.\n";
+        return 1;
     }
-    else{
-        cout<<"college proxy not detected\n";
-        unsetGitProxy();
+
+       string proxy ="http://" + username + ":" + password + "@172.31.2.4:8080";
+
+       cout << "College network detected\n";
+
+        setGitProxy(proxy);
+        setNpmProxy(proxy);
+
         verifyGitProxy();
-        return 0;
+        verifyNpmProxy();
+
+    } else {
+       cout << "Not college network detected\n";
+
+        unsetGitProxy();
+        unsetNpmProxy();
+
+        verifyGitProxy();
+        verifyNpmProxy();
     }
-
-    string username="IIT2023189",password="Aniziiit%4027";
-    // cout<<"Enter proxy username"<<endl;
-    // cin>>username;
-    // cout<<"enter proxy password"<<endl;
-    // cin>>password;
-
-    string proxy="http://"+username+":"+password+"@172.31.2.4:8080";
-    cout<<proxy<<endl;
-
-    std::cout << "Setting git proxy...\n";
-    setGitProxy(proxy);
-
-    verifyGitProxy();
     return 0;
 }
+
